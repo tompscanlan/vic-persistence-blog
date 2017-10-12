@@ -1,0 +1,5 @@
+FROM alpine:3.6
+
+RUN echo -e "#!/bin/sh\ndate\nsleep 2d\ndate" >/bin/our-application
+RUN chmod 755 /bin/our-application
+CMD ["/bin/our-application"]
