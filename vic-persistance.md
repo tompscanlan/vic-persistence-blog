@@ -1,13 +1,19 @@
 
 # Persistent Storage for vSphere Integrated Containers
 
-[vSphere Integrated Containers (VIC)](https://www.vmware.com/products/vsphere/integrated-containers.html) is a container solution that leverages the strengths of vSphere.  Let's dive into some of the the storage concerns with docker containers and see how they are addressed in VIC.
+Docker has been great for stateless workloads.  While stateful workloads can run in containers, a limiting factor has been that most methods of providing storage for the state has been limited to the host serving the container.  That storage becomes inaccessible if the host fails.  VIC can allow a transparent loss of the host.
+
+[vSphere Integrated Containers (VIC)](https://www.vmware.com/products/vsphere/integrated-containers.html) is a container solution that leverages the strengths of vSphere.  While stand-alone docker hosts are great during development, production use calls for a robust infrastructure for managing container workloads.
+
+Let's dive into some of the the storage concerns with docker containers and see how they are addressed in VIC.
 
 ## Docker Image Layers
 
-Running containers are composed of layers of filesystem images applied in a stack.  The layers are created at build-time, and remain unaltered even at run-time.  While running, changes to the filesystem will be persisted to an extra layer called the container layer.  The container layer is removed when the container is removed.
+Container images are different from running containers.  The images are static artifacts that are built and stored in docker registries for use when running a new container.  Images are just a set of files that make up the filesystem available to a running container. 
 
-For example, this docker file builds on top of the alpine-3.6 image layer.
+Running containers are composed of layers of images applied in a stack  The underlying layers remain unaltered.  While running, any changes to the filesystem will be persisted to an extra layer called the container layer.  The container layer is removed when the container is removed.
+
+Here is an example to illustrate what's going on in image layers. This docker file builds on top of the alpine-3.6 image layer.
 
 ```
 FROM alpine:3.6
@@ -48,6 +54,8 @@ IMAGE               CREATED             CREATED BY                              
 <missing>           4 weeks ago         /bin/sh -c #(nop) ADD file:4583e12bf5caec4...   3.97MB
 ```
 
+The alpine layer is there at the bottom, and our additional commands have generated a few more layers that get stacked on top to be the image we want.  The final image that has all of the files we need is referenced by the ID 31af83e49686 or by the tag demo:0.1.  Each of those layers should be stored in a registry, and can be re-used by future images.
+
 When we run the container, an additional container layer is created that allows modification of the filesystem by the running system.  If no changes are made to the filesystem, this layer remains empty.  Let's run the image as a container, and modify it's filesystem:
 
 ```
@@ -66,10 +74,12 @@ If we stop and remove the container, the container layer will be removed, and ou
 
 For more details on the structure of images see https://docs.docker.com/engine/userguide/storagedriver/imagesandcontainers/
 
+I want to call out a distinction here that the container layer is ephemeral storage.  It's around while the container is, and lost when the container goes away.  This is in contrast to what we need for data that needs to remain after the container is removed.  I'll talk about persistent storage coming up.
+
 
 ## Why aren't containers persistent?
 
-The reason for this lack of persistence is to ensure the application we put into a container image is always the application being run.  Images are versioned so that we can be sure that two systems are running exactly the same code.  Re-running the same image will always produce the same running conditions. 
+The lack of persistence in the image layers is by design.  By choosing to only allow ephemeral storage, we can ensure the application we put into a container image is always the application being run.  Images are versioned so that we can be sure that two systems are running exactly the same code.  Re-running the same image will always produce the same running conditions. 
 
 The immutability of the images results in better ability to debug, smoother deployments, and the ability to quickly replace running applications that appear to be in a bad state.
 
@@ -88,7 +98,9 @@ How do we keep state between runs of an image?  There are a at least a few patte
 
 If you can design your application to replicate data to other containers, and ensure at least one copy is always running then you're using this pattern.
 
-An example of this patterns is running a Cassandra database cluster, where replication enables the dynamic addition or removal of nodes.  ***I wouldn't recommend doing this***, **but** if running Cassandra in containers, and being good about bootstrapping, and removing nodes, then you could run a stable database cluster with normal basic `docker run`.  The persistence is handled by storing data in the container layer.  As long as enough containers are up, persistence is maintained.
+An example of this patterns is running a Cassandra database cluster, where replication enables the dynamic addition or removal of nodes.  If running Cassandra in containers, and being good about bootstrapping, and removing nodes, then you could run a stable database cluster with normal basic `docker run`.  The persistence is handled by storing data in the container layer.  As long as enough containers are up, persistence is maintained.
+
+There should be a blog entry about this specific use case in the near future.
 
 ### Re-create data on loss
 
@@ -106,26 +118,87 @@ Docker has two ways of handing a persistent filesystem in containers **bind moun
 
 #### bind mount
 
-This is simply mounting a host filesystem file or directory into the container. This is not very different from mounting a CDROM onto a VM.  The host path may look like `/srv/dir-to-mount`, and inside the container, you may be able to access the directory at `/mnt/dir-to-mount`
+This is simply mounting a host filesystem file or directory into the container. This is not very different from mounting a CDROM onto a VM.  The host path may look like `/srv/dir-to-mount`, and inside the container, you may be able to access the directory at `/mnt/dir-to-mount`.
+
+Bind mounting is used all the time in development, but should never be used in production.  It ties the container to the specific host at runtime, and if the host is lost, so is the data. Volumes are the answer for production requirements.
 
 #### volumes
 
-This is slightly different from a simple bind mount.  Here, docker creates a directory that is the volume, and mounts it just as in a bind mount.  A big difference is that docker manages the lifecycle of this volume.  This is the preferred way to use persistent storage in docker.
+Volumes are the preferred way to use persistent storage in docker.
 
-From [Docker's volume document](https://docs.docker.com/engine/admin/volumes/volumes/):
+This is slightly different from a simple bind mount.  Here, docker creates a directory that is the volume, and mounts it just as in a bind mount. In contrast to bind mounts, docker manages the lifecycle of this volume, and by doing so allows the ability to use storage drivers that enable the backing storage to exist outside of the host running the container.
 
-> * Volumes are easier to back up or migrate than bind mounts.
-> * You can manage volumes using Docker CLI commands or the Docker API.
-> * Volumes work on both Linux and Windows containers.
-> * Volumes can be more safely shared among multiple containers.
-> * Volume drivers allow you to store volumes on remote hosts or cloud providers, to encrypt the contents of volumes, or to add other functionality.
-> * A new volume’s contents can be pre-populated by a container.
+VIC leverages this to use vSphere storage types like vSAN, iSCSI, and NFS to back the volume.  Doing this means we can get handle failures of any host running the container, and ensure access to the data in the volume to resume running on a different host.
+
+Another example of leveraging the storage drivers of docker volumes is shown in [vSphere Docker Volume Service](https://blogs.vmware.com/virtualblocks/2016/06/20/vsphere-docker-volume-driver-brings-benefits-of-vsphere-storage-to-containers/).  This driver enables using vSphere backed storage when using native docker hosts, and not VIC.
+
+For deeper coverage on volumes, see [Docker's volume document](https://docs.docker.com/engine/admin/volumes/volumes/).
 
 Lets take a closer look at using volumes to persist data in VIC.
 
 ## VIC Volumes
 
-Command line use of volumes in VIC is exactly the same as standard docker, with the benefit of the storage being backed by NFS or vSphere Storage.
+Command line use of volumes in VIC is exactly the same as standard docker, with the benefit of the storage being backed by vSphere Storage.
+
+In VIC, if you want to use volumes that are private to the container, you can use the iSCSI or vSAN storage in vSphere.  If you have data that should be shared into more than one container, you can use an NFS backed datastore from vSphere.
+
+When setting up a container host in VIC, you specify the datastores that will be available for use by any containers running against that host. These are specified using the `--volume-store` argument to `vic-machine`.
+
+Here is an example showing the command that would create the container host  and enable it to present volumes with various backing stores.
+
+```
+vic-machine ...
+--volume-store vsanDatastore/volumes/my-vch-data:backed-up-encrypted 
+--volume-store iSCSI-nvme/volumes/my-vch-logs:default
+--volume-store vsphere-nfs-datastore/volumes/my-vch-library:library-data
+--volume-store nfs://10.118.68.164/mnt/nfs-vol?uid=0&gid=0&proto=tcp:shared
+```
+
+The first volume store is on a vSAN datastore and uses the label `backed-up-encrypted` so that a client can type `docker volume create --opt VolumeStore=backed-up-encrypted myData` to create a volume in that store. The second uses cheaper storage backed by a FreeNAS server mounted using iSCSI and is used for storing log data. Note that it has the label “default”, which means that any volume created without a volume store specified is created here. The third and fourth are for two types of NFS exports.  The first being an NFS datastore presented by vSphere, and the other a standard NFS host directly.
+
+Once you’ve installed the VCH, you'll notice that there are now empty folders created on the respective datastores ready for volume data:
+
+```
+vsanDatastore/volumes/my-vch-data/volumes
+iSCSI-nvme/volumes/my-vch-logs/volumes
+vsphere-nfs-datastore/volumes/my-vch-library/volumes
+nfs://10.118.68.164/mnt/nfs-vol/volumes
+```
+
+### create and use volumes
+
+Let’s go ahead and create volumes using the docker client. Note the implied use of the default volume store in the second example.
+
+```
+$ docker volume create --opt VolumeStore=backed-up-encrypted --opt Capacity=10G demo_data
+$ docker volume create --opt Capacity=5G demo_logs
+$ docker volume create --opt VolumeStore=library-data demo_library
+$ docker volume create --opt VolumeStore=shared demo_shared
+```
+
+After volume creation, you'll see the following files were created in the backing datastores:
+
+```
+vsanDatastore/volumes/my-vch-data/volumes/demo_data/demo_data.vmdk
+vsanDatastore/volumes/my-vch-data/volumes/demo_data/ImageMetadata/DockerMetaData
+iSCSI-nvme/volumes/my-vch-logs/volumes/demo_logs/demo_logs.vmdk
+iSCSI-nvme/volumes/my-vch-logs/volumes/demo_logs/ImageMetadata/DockerMetaData
+vsphere-nfs-datastore/volumes/my-vch-library/volumes/demo_library
+vsphere-nfs-datastore/volumes/my-vch-library/volumes/demo_library/ImageMetadata/DockerMetaData
+nfs://10.118.68.164/mnt/nfs-vol/volumes/demo_shared
+nfs://10.118.68.164/mnt/nfs-vol/volumes_metadata/myshared/DockerMetaData
+```
+[fixme ... verify nfs share files created]
+
+
+
+```
+docker run -it --name test -v mydata:/data -v mylogs:/logs -v mylibrary:/library -v myshared:/shared busybox sh
+# echo “some data” > /data/some-data
+# echo “some logs” > /logs/some-logs
+# echo “some shared” > /shared/some-shared
+# exit
+```
 
 ### create and use volumes
 
@@ -149,7 +222,7 @@ $ docker run -it --rm -v demo_vol:/vol  busybox sh
 Re-use the same volume in another container:
 
 ```
-$ docker run -it --rm -v demo_vol:/vol  busybox sh
+$ docker run -it --rm -v demo_vol:/vol  alpine sh
 # date >> /vol/demo-state
 # cat /vol/demo-state
 # exit
