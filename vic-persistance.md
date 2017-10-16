@@ -147,11 +147,11 @@ When setting up a container host in VIC, you specify the datastores that will be
 Here is an example showing the command that would create the container host  and enable it to present volumes with various backing stores.
 
 ```
-vic-machine ...
+vic-machine ...<bunch of other arguments>...
 --volume-store vsanDatastore/volumes/my-vch-data:backed-up-encrypted 
 --volume-store iSCSI-nvme/volumes/my-vch-logs:default
---volume-store vsphere-nfs-datastore/volumes/my-vch-library:library-data
---volume-store nfs://10.118.68.164/mnt/nfs-vol?uid=0&gid=0&proto=tcp:shared
+--volume-store vsphere-nfs-datastore/volumes/my-vch-library:nfs-datastore
+--volume-store 'nfs://10.118.68.164/mnt/nfs-vol?uid=0\&gid=0:nfs-direct'
 ```
 
 The first volume store is on a vSAN datastore and uses the label `backed-up-encrypted` so that a client can type `docker volume create --opt VolumeStore=backed-up-encrypted myData` to create a volume in that store. The second uses cheaper storage backed by a FreeNAS server mounted using iSCSI and is used for storing log data. Note that it has the label “default”, which means that any volume created without a volume store specified is created here. The third and fourth are for two types of NFS exports.  The first being an NFS datastore presented by vSphere, and the other a standard NFS host directly.
@@ -172,8 +172,8 @@ Let’s go ahead and create volumes using the docker client. Note the implied us
 ```
 $ docker volume create --opt VolumeStore=backed-up-encrypted --opt Capacity=10G demo_data
 $ docker volume create --opt Capacity=5G demo_logs
-$ docker volume create --opt VolumeStore=library-data demo_library
-$ docker volume create --opt VolumeStore=shared demo_shared
+$ docker volume create --opt VolumeStore=nfs-datastore demo_nfs_datastore
+$ docker volume create --opt VolumeStore=nfs-direct demo_nfs_direct
 ```
 
 After volume creation, you'll see the following files were created in the backing datastores:
@@ -183,55 +183,40 @@ vsanDatastore/volumes/my-vch-data/volumes/demo_data/demo_data.vmdk
 vsanDatastore/volumes/my-vch-data/volumes/demo_data/ImageMetadata/DockerMetaData
 iSCSI-nvme/volumes/my-vch-logs/volumes/demo_logs/demo_logs.vmdk
 iSCSI-nvme/volumes/my-vch-logs/volumes/demo_logs/ImageMetadata/DockerMetaData
-vsphere-nfs-datastore/volumes/my-vch-library/volumes/demo_library
-vsphere-nfs-datastore/volumes/my-vch-library/volumes/demo_library/ImageMetadata/DockerMetaData
-nfs://10.118.68.164/mnt/nfs-vol/volumes/demo_shared
-nfs://10.118.68.164/mnt/nfs-vol/volumes_metadata/myshared/DockerMetaData
+vsphere-nfs-datastore/volumes/my-vch-library/volumes/demo_nfs_datastore/demo_nfs_datastore.vmdk
+vsphere-nfs-datastore/volumes/my-vch-library/volumes/demo_nfs_datastore/ImageMetadata/DockerMetaData
+nfs://10.118.68.164/mnt/nfs-vol/volumes/demo_nfs_direct
+nfs://10.118.68.164/mnt/nfs-vol/volumes_metadata/demo_nfs_direct/DockerMetaData
 ```
-[fixme ... verify nfs share files created]
 
-
+Run a container that drops some data on each of the datastores, and check that it exists from another container.
 
 ```
-docker run -it --name test -v mydata:/data -v mylogs:/logs -v mylibrary:/library -v myshared:/shared busybox sh
-# echo “some data” > /data/some-data
-# echo “some logs” > /logs/some-logs
-# echo “some shared” > /shared/some-shared
+docker run -it --rm -v demo_data:/data -v demo_logs:/logs -v demo_nfs_datastore:/library -v demo_nfs_direct:/shared busybox sh
+
+echo "some data" > /data/some-data ;
+echo "some logs" > /logs/some-logs ;
+echo "some library" > /library/some-lib;
+echo "some shared" > /shared/some-shared ;
+exit
+
+$
+$ docker run -it --rm -v demo_data:/data -v demo_logs:/logs -v demo_nfs_datastore:/library -v demo_nfs_direct:/shared alpine  sh
+# cat /data/some-data /logs/some-logs /library/some-lib /shared/some-shared
 # exit
 ```
 
-### create and use volumes
-
-Create the volume:
+Remember that only the nfs-direct datastore, using native NFS volumes should be allowed to share data between more than one container.
 
 ```
-$ docker volume create  --name demo_vol
-$ docker volume ls
-DRIVER              VOLUME NAME
-vsphere             demo_vol
-```
+$ docker run --name nginx -v demo_nfs_direct:/usr/share/nginx/html:ro -d nginx
+$ docker run -it --rm -v demo_nfs_direct:/shared busybox sh
 
-Mount it into a container, and save some state:
+# date >> /shared/index.html
 
 ```
-$ docker run -it --rm -v demo_vol:/vol  busybox sh
-# date >> /vol/demo-state
-# exit
-```
 
-Re-use the same volume in another container:
-
-```
-$ docker run -it --rm -v demo_vol:/vol  alpine sh
-# date >> /vol/demo-state
-# cat /vol/demo-state
-# exit
-```
-
-```
-$ export DOCKER_HOST=192.168.100.138:2375
-$ export DOCKER_CONTENT_TRUST_SERVER=https://registry.corp.local:4443
-```
+----------
 
 One thing to look out for, is that under native docker volumes only exist on the  host for the container.  If a host dies, the underlying storage is lost.  
 A cool feature of the volume being backed by vSphere, is that a running container can be scheduled on any host that is part of the same DRS cluster, and if the chosen host goes down, the container resumes running on a different host.
