@@ -189,24 +189,23 @@ nfs://10.118.68.164/mnt/nfs-vol/volumes/demo_nfs_direct
 nfs://10.118.68.164/mnt/nfs-vol/volumes_metadata/demo_nfs_direct/DockerMetaData
 ```
 
-Run a container that drops some data on each of the datastores, and check that it exists from another container.
+To show the most basic level of persistence, here we run a container that drops some data on each of the datastores, and check that it exists from another container.  In production, this could be a database workload hosted in container and operating on the persistent external storage.
 
 ```
-docker run -it --rm -v demo_data:/data -v demo_logs:/logs -v demo_nfs_datastore:/library -v demo_nfs_direct:/shared busybox sh
+$ docker run -it --rm -v demo_data:/data -v demo_logs:/logs -v demo_nfs_datastore:/library -v demo_nfs_direct:/shared busybox sh
 
-echo "some data" > /data/some-data ;
-echo "some logs" > /logs/some-logs ;
-echo "some library" > /library/some-lib;
-echo "some shared" > /shared/some-shared ;
-exit
-
+# echo "some data" > /data/some-data ;
+# echo "some logs" > /logs/some-logs ;
+# echo "some library" > /library/some-lib;
+# echo "some shared" > /shared/some-shared ;
+# exit
 $
 $ docker run -it --rm -v demo_data:/data -v demo_logs:/logs -v demo_nfs_datastore:/library -v demo_nfs_direct:/shared alpine  sh
 # cat /data/some-data /logs/some-logs /library/some-lib /shared/some-shared
 # exit
 ```
 
-Remember that only the direct nfs datastore, using native NFS volumes, should be allowed to share data between more than one container.  Here is an example of sharing some storage between containers:
+Right now, only native NFS volumes are allowed to share data between more than one container. Here is an example of sharing some storage between containers using native NFS.
 
 ```
 $ docker run --name nginx -v demo_nfs_direct:/usr/share/nginx/html:ro -p 80:80 -d nginx
