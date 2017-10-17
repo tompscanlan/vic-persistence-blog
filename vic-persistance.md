@@ -142,7 +142,7 @@ Command line use of volumes in VIC is exactly the same as standard docker, with 
 
 In VIC, if you want to use volumes that are private to the container, you can use the iSCSI or vSAN storage in vSphere.  If you have data that should be shared into more than one container, you can use an NFS backed datastore from vSphere.
 
-When setting up a container host in VIC, you specify the datastores that will be available for use by any containers running against that host. These are specified using the `--volume-store` argument to `vic-machine`.
+When setting up a container host in VIC, you specify the datastores that will be available for use by any containers running against that host. These are specified using the `--volume-store` argument to `vic-machine`.  These backing volume-stores can only be set at `vic-machine` creation time, but that isn't usually a problem.
 
 Here is an example showing the command that would create the container host  and enable it to present volumes with various backing stores.
 
@@ -170,7 +170,7 @@ nfs://10.118.68.164/mnt/nfs-vol/volumes
 Let’s go ahead and create volumes using the docker client. Note the implied use of the default volume store in the second example.
 
 ```
-$ docker volume create --opt VolumeStore=backed-up-encrypted --opt Capacity=10G demo_data
+$ docker volume create --opt VolumeStore=backed-up-encrypted --opt Capacity=1G demo_data
 $ docker volume create --opt Capacity=5G demo_logs
 $ docker volume create --opt VolumeStore=nfs-datastore demo_nfs_datastore
 $ docker volume create --opt VolumeStore=nfs-direct demo_nfs_direct
@@ -206,31 +206,36 @@ $ docker run -it --rm -v demo_data:/data -v demo_logs:/logs -v demo_nfs_datastor
 # exit
 ```
 
-Remember that only the nfs-direct datastore, using native NFS volumes should be allowed to share data between more than one container.
+Remember that only the direct nfs datastore, using native NFS volumes, should be allowed to share data between more than one container.  Here is an example of sharing some storage between containers:
 
 ```
-$ docker run --name nginx -v demo_nfs_direct:/usr/share/nginx/html:ro -d nginx
+$ docker run --name nginx -v demo_nfs_direct:/usr/share/nginx/html:ro -p 80:80 -d nginx
+
+$ curl 192.168.100.159
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+...
+</html>
+
 $ docker run -it --rm -v demo_nfs_direct:/shared busybox sh
-
-# date >> /shared/index.html
-
+# echo "hello from $(date)" > /shared/index.html
+hello from Mon Oct 16 21:33:03 UTC 2017
 ```
 
-----------
 
-One thing to look out for, is that under native docker volumes only exist on the  host for the container.  If a host dies, the underlying storage is lost.  
-A cool feature of the volume being backed by vSphere, is that a running container can be scheduled on any host that is part of the same DRS cluster, and if the chosen host goes down, the container resumes running on a different host.
+As a final note, a cool feature of the volume being backed by vSphere and shared across more than one host is that a running container can be scheduled on any host that is part of the same DRS cluster.  If the chosen host goes down, the container resumes running on a different host.
 
-Here is the initial placement of a container:
+Here is an initial placement of a container:
 ![image of initial container placement](./initial-container.png)
 
-And after a host failure, the container is moved to a running host:
+And after causing a host failure, the container is moved to a running host:
 ![Host failure migrates container](./migrated-container.png)
 
+So, there you have it; VIC can provide resilient storage, and cope with host failures.  Not mandatory during development, but definitely a boon in the production landscape.
 
 ### caveats
-* volumes are centralized on shared storage, either VMFS or NFS
+* Currently there is no support for volumes under Storage Distributed Resource Scheduler (SDRS)
 
-Currently there is no support for volumes under Storage Distributed Resource Scheduler (SDRS).
-
-Currently vSphere backed volumes are do not support being mounted on more than one container at a time, though this is supported with NFS backed volumes.
+* Except for NFS backed volumes, vSphere backed volumes do not support being mounted on more than one container at a time
