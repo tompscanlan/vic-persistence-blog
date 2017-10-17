@@ -1,9 +1,9 @@
 
 # Persistent Storage for vSphere Integrated Containers
 
-Docker has been great for stateless workloads.  While stateful workloads can run in containers, a limiting factor has been that most methods of providing storage for the state has been limited to the host serving the container.  That storage becomes inaccessible if the host fails.  VIC can allow a transparent loss of the host.
+Docker has been great for stateless workloads.  While stateful workloads can run in containers, a limiting factor has been that most methods of providing storage for the state has been limited to the host serving the container.  That storage becomes inaccessible if the host fails.  vSphere Integrated Containers (VIC) allows a transparent loss of the host.
 
-[vSphere Integrated Containers (VIC)](https://www.vmware.com/products/vsphere/integrated-containers.html) is a container solution that leverages the strengths of vSphere.  While stand-alone docker hosts are great during development, production use calls for a robust infrastructure for managing container workloads.
+[vSphere Integrated Containers](https://www.vmware.com/products/vsphere/integrated-containers.html) is a container solution integrated in vSphere and that leverages the strengths of vSphere to run container images in production.  While stand-alone docker hosts are great during development, production use calls for a robust infrastructure for managing container workloads.
 
 Let's dive into some of the the storage concerns with docker containers and see how they are addressed in VIC.
 
@@ -144,7 +144,7 @@ In VIC, if you want to use volumes that are private to the container, you can us
 
 When setting up a container host in VIC, you specify the datastores that will be available for use by any containers running against that host. These are specified using the `--volume-store` argument to `vic-machine`.  These backing volume-stores can be set or updated using `vic-machine configure`.  Volumes added can only be removed by removing the the container host, but that isn't usually a problem.
 
-Here is an example showing the command that would create the container host  and enable it to present volumes with various backing stores.
+Here is an example showing the command that would create the container host and enable it to present volumes with various backing stores.
 
 ```
 vic-machine ...<bunch of other arguments>...
@@ -154,7 +154,7 @@ vic-machine ...<bunch of other arguments>...
 --volume-store 'nfs://10.118.68.164/mnt/nfs-vol?uid=0\&gid=0:nfs-direct'
 ```
 
-The first volume store is on a vSAN datastore and uses the label `backed-up-encrypted` so that a client can type `docker volume create --opt VolumeStore=backed-up-encrypted myData` to create a volume in that store. The second uses cheaper storage backed by a FreeNAS server mounted using iSCSI and is used for storing log data. Note that it has the label "default", which means that any volume created without a volume store specified is created here. The third and fourth are for two types of NFS exports.  The first being an NFS datastore presented by vSphere, and the other a standard NFS host directly.
+The first volume store is on a vSAN datastore and uses the label `backed-up-encrypted` so that a client can type `docker volume create --opt VolumeStore=backed-up-encrypted myData` to create a volume in that store. The second uses cheaper storage backed by a FreeNAS server mounted using iSCSI and is used for storing log data. Note that it has the label "default", which means that any volume created without a volume store specified is created here. The third and fourth are for two types of NFS exports.  The first being an NFS datastore presented by vSphere, and the other a standard NFS host directly (usueful if you want to share data between containers).
 
 Once you’ve installed the VCH, you'll notice that there are now empty folders created on the respective datastores ready for volume data:
 
