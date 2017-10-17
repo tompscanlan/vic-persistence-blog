@@ -9,7 +9,7 @@ Let's dive into some of the the storage concerns with docker containers and see 
 
 ## Docker Image Layers
 
-Container images are different from running containers.  The images are static artifacts that are built and stored in docker registries for use when running a new container.  Images are just a set of files that make up the filesystem available to a running container. 
+Container images are different from running containers.  The images are static artifacts that are built and stored in docker registries for use when running a new container.  Images are just a set of files that make up the filesystem available to a running container.
 
 Running containers are composed of layers of images applied in a stack  The underlying layers remain unaltered.  While running, any changes to the filesystem will be persisted to an extra layer called the container layer.  The container layer is removed when the container is removed.
 
@@ -79,7 +79,7 @@ I want to call out a distinction here that the container layer is ephemeral stor
 
 ## Why aren't containers persistent?
 
-The lack of persistence in the image layers is by design.  By choosing to only allow ephemeral storage, we can ensure the application we put into a container image is always the application being run.  Images are versioned so that we can be sure that two systems are running exactly the same code.  Re-running the same image will always produce the same running conditions. 
+The lack of persistence in the image layers is by design.  By choosing to only allow ephemeral storage, we can ensure the application we put into a container image is always the application being run.  Images are versioned so that we can be sure that two systems are running exactly the same code.  Re-running the same image will always produce the same running conditions.
 
 The immutability of the images results in better ability to debug, smoother deployments, and the ability to quickly replace running applications that appear to be in a bad state.
 
@@ -87,7 +87,7 @@ Let's flip it around; If container images were able to change, how could I be su
 
 ## Ok, lack of persistence is good for the container... how do I save data?
 
-At some point, most of our applications need to leverage some data.  
+At some point, most of our applications need to leverage some data.
 How do we keep state between runs of an image?  There are a at least a few patterns:
 
 1. replication
@@ -142,19 +142,19 @@ Command line use of volumes in VIC is exactly the same as standard docker, with 
 
 In VIC, if you want to use volumes that are private to the container, you can use the iSCSI or vSAN storage in vSphere.  If you have data that should be shared into more than one container, you can use an NFS backed datastore from vSphere.
 
-When setting up a container host in VIC, you specify the datastores that will be available for use by any containers running against that host. These are specified using the `--volume-store` argument to `vic-machine`.  These backing volume-stores can only be set at `vic-machine` creation time, but that isn't usually a problem.
+When setting up a container host in VIC, you specify the datastores that will be available for use by any containers running against that host. These are specified using the `--volume-store` argument to `vic-machine`.  These backing volume-stores can be set or updated using `vic-machine configure`.  Volumes added can only be removed by removing the the container host, but that isn't usually a problem.
 
 Here is an example showing the command that would create the container host  and enable it to present volumes with various backing stores.
 
 ```
 vic-machine ...<bunch of other arguments>...
---volume-store vsanDatastore/volumes/my-vch-data:backed-up-encrypted 
+--volume-store vsanDatastore/volumes/my-vch-data:backed-up-encrypted
 --volume-store iSCSI-nvme/volumes/my-vch-logs:default
 --volume-store vsphere-nfs-datastore/volumes/my-vch-library:nfs-datastore
 --volume-store 'nfs://10.118.68.164/mnt/nfs-vol?uid=0\&gid=0:nfs-direct'
 ```
 
-The first volume store is on a vSAN datastore and uses the label `backed-up-encrypted` so that a client can type `docker volume create --opt VolumeStore=backed-up-encrypted myData` to create a volume in that store. The second uses cheaper storage backed by a FreeNAS server mounted using iSCSI and is used for storing log data. Note that it has the label “default”, which means that any volume created without a volume store specified is created here. The third and fourth are for two types of NFS exports.  The first being an NFS datastore presented by vSphere, and the other a standard NFS host directly.
+The first volume store is on a vSAN datastore and uses the label `backed-up-encrypted` so that a client can type `docker volume create --opt VolumeStore=backed-up-encrypted myData` to create a volume in that store. The second uses cheaper storage backed by a FreeNAS server mounted using iSCSI and is used for storing log data. Note that it has the label "default", which means that any volume created without a volume store specified is created here. The third and fourth are for two types of NFS exports.  The first being an NFS datastore presented by vSphere, and the other a standard NFS host directly.
 
 Once you’ve installed the VCH, you'll notice that there are now empty folders created on the respective datastores ready for volume data:
 
