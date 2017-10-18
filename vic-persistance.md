@@ -91,7 +91,7 @@ At some point, most of our applications need to leverage some data.
 How do we keep state between runs of an image?  There are a at least a few patterns:
 
 1. replication
-2. replay transactions
+2. recreate data or replay transactions
 3. filesystem persistance
 
 ### Replication
@@ -102,13 +102,19 @@ An example of this patterns is running a Cassandra database cluster, where repli
 
 There should be a blog entry about this specific use case in the near future.
 
-### Re-create data on loss
+### Re-create or replay data on loss
 
 If you can design your application to be able to re-create any needed data, you're using this pattern.
 
-An example of this might be a prime number finder, where if the discovered primes are lost due to the container dying, the same primes can be re-discovered in another container.
+An example of this might be a prime number finder tasked with finding a set of prime numbers in a range of numbers by counting up from the low end of the range and testing each number for primacy.
+If the primes are stored for future use, but the data is lost for any reason, a new instance of the process
+can scan the same range and would find the same numbers that the original process found.
+In this case, the data is inherent to the requirements of the process, so the data can be
+recreated.
 
-A less brain-dead example would be to leverage an external kafka service as a journal to save every transaction.  When a container dies, and is replaced, it can replay all the prior transactions until state is up-to-date.
+A more efficent varient of this process would store each found prime and the last number tested in apache Kafka.
+Given a consistent initial range and the transaction log,
+we can quickly get back to a known state without re-testing each number for primacy, and continue processing from there.
 
 ### Persistent Filesystem
 
@@ -223,8 +229,11 @@ $ docker run -it --rm -v demo_nfs_direct:/shared busybox sh
 hello from Mon Oct 16 21:33:03 UTC 2017
 ```
 
-
-As a final note, a cool feature of the volume being backed by vSphere and shared across more than one host is that a running container can be scheduled on any host that is part of the same DRS cluster.  If the chosen host goes down, the container resumes running on a different host.
+As a final note, a cool resilence benefit of VIC is that if the volume is being backed by vSphere and shared across more than one ESXi host is that a running container
+can be scheduled on any ESXi host that is part of the same HA cluster.
+If the chosen ESXi host goes down, the container continues running on a different ESXi host.
+The VIC container host, which is just the docker endpoint for controlling running container VMs, can go down at any time without inturrupting the
+operation of running containers.
 
 Here is an initial placement of a container:
 ![image of initial container placement](./initial-container.png)
