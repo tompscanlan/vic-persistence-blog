@@ -233,10 +233,10 @@ As a final note, if you have a stateful process that can handle restart, VMware 
 will enable restarting the container on a new ESXi host if the original ESXi host fails.  If
 your process can't implement a re-play or replication pattern to recover state on failure,
 then VMware Fault Tolerance enables transparent continuation of processing during an ESXi host failure.
-In this case the container VM continues running on Ja new ESXi host as though there were no failure of the original host.
+In this case the container VM continues running on the new ESXi host as though there were no failure of the original host.
 We'll see if we can make a blog entry demonstrating the Fault Tolerance feature.
 
-Here is an example of VMware HA help a container resume running on a new host after failure of the initial ESXi host.  This is the picture before failure:
+Here is an example of VMware HA helping a container resume running on a new host after failure of the initial ESXi host.  This is the picture before failure:
 ![image of initial container placement](./initial-container.png)
 
 And after causing an ESXi host failure, the container is moved to and started on a different ESXi host:
