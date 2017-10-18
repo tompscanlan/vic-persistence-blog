@@ -106,7 +106,7 @@ There should be a blog entry about this specific use case in the near future.
 
 If you can design your application to be able to re-create any needed data, you're using this pattern.
 
-An example of this might be a prime number finder tasked with finding a set of prime numbers in a range of numbers by counting up from the low end of the range and testing each number for primacy.
+An example of this might be a prime number finder tasked with finding a set of prime numbers in a range of numbers by counting up from the low end of the range and testing each number for primality.
 If the primes are stored for future use, but the data is lost for any reason, a new instance of the process
 can scan the same range and would find the same numbers that the original process found.
 In this case, the data is inherent to the requirements of the process, so the data can be
@@ -114,7 +114,7 @@ recreated.
 
 A more efficent varient of this process would store each found prime and the last number tested in apache Kafka.
 Given a consistent initial range and the transaction log,
-we can quickly get back to a known state without re-testing each number for primacy, and continue processing from there.
+we can quickly get back to a known state without re-testing each number for primality, and continue processing from there.
 
 ### Persistent Filesystem
 
@@ -229,16 +229,17 @@ $ docker run -it --rm -v demo_nfs_direct:/shared busybox sh
 hello from Mon Oct 16 21:33:03 UTC 2017
 ```
 
-As a final note, a cool resilence benefit of VIC is that if the volume is being backed by vSphere and shared across more than one ESXi host is that a running container
-can be scheduled on any ESXi host that is part of the same HA cluster.
-If the chosen ESXi host goes down, the container continues running on a different ESXi host.
-The VIC container host, which is just the docker endpoint for controlling running container VMs, can go down at any time without inturrupting the
-operation of running containers.
+As a final note, if you have a stateful process that can handle restart, VMware HA
+will enable restarting the container on a new ESXi host if the original ESXi host fails.  If
+your process can't implement a re-play or replication pattern to recover state on failure,
+then VMware Fault Tolerance enables transparent continuation of processing during an ESXi host failure.
+In this case the container VM continues running on Ja new ESXi host as though there were no failure of the original host.
+We'll see if we can make a blog entry demonstrating the Fault Tolerance feature.
 
-Here is an initial placement of a container:
+Here is an example of VMware HA help a container resume running on a new host after failure of the initial ESXi host.  This is the picture before failure:
 ![image of initial container placement](./initial-container.png)
 
-And after causing a host failure, the container is moved to a running host:
+And after causing an ESXi host failure, the container is moved to and started on a different ESXi host:
 ![Host failure migrates container](./migrated-container.png)
 
 So, there you have it; VIC can provide resilient storage, and cope with host failures.  Not mandatory during development, but definitely a boon in the production landscape.
