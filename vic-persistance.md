@@ -1,3 +1,4 @@
+Copyright © 2017 VMware, Inc. All Rights Reserved.
 
 # Persistent Storage for vSphere Integrated Containers
 
@@ -161,6 +162,21 @@ vic-machine ...<bunch of other arguments>...
 ```
 
 The first volume store is on a vSAN datastore and uses the label `backed-up-encrypted` so that a client can type `docker volume create --opt VolumeStore=backed-up-encrypted myData` to create a volume in that store. The second uses cheaper storage backed by a FreeNAS server mounted using iSCSI and is used for storing log data. Note that it has the label "default", which means that any volume created without a volume store specified is created here. The third and fourth are for two types of NFS exports.  The first being an NFS datastore presented by vSphere, and the other a standard NFS host directly (usueful if you want to share data between containers).
+
+----------------
+
+***Note regarding NFS gotcha:*** NFS mounts in container can be tricky.
+*If you notice that you cannot read or write files to an NFS share in container, then you have probably hit this gotcha.*
+
+Note the final volume store above has `uid` and `gid` arguments.  There are two competing concerns.
+First, docker will generally run as `uid` and `gid` `0`, or as root.
+You can change that behavior by specifying a `USER` in the Dockerfile or on the command line.
+See [docker user command](https://docs.docker.com/engine/reference/run/#user) for details on how to set it.
+Second, NFS has many ways permissions based on `uid` and `gid` are applied to the mounted filesystem.
+
+You must ensure that the `user` of the running container matches the `uid` and `gid` permissions on the files exported by NFS.  Finally, note the syntax for native docker NFS volumes and VIC NFS volumes is different, so if trying to apply this to native docker, you'll want to start [here](https://docs.docker.com/engine/reference/commandline/volume_create/#driver-specific-options).
+
+--------------
 
 Once you’ve installed the VCH, you'll notice that there are now empty folders created on the respective datastores ready for volume data:
 
